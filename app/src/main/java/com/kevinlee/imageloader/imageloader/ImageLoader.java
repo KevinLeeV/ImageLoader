@@ -9,10 +9,12 @@ import android.os.Looper;
 import android.os.Message;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.util.LruCache;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 
+import java.lang.reflect.Field;
 import java.util.LinkedList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -60,6 +62,9 @@ public class ImageLoader {
     // 信号量，用来处理多线程防止空指针
     private Semaphore mSemaphorePoolThreadHandler = new Semaphore(0);
 
+    // 信号量，设置线程池中的线程将当前任务执行完，再去任务队列中取任务
+    private Semaphore mSemaphorePoolThread;
+
     private ImageLoader(int threadCount, LoadType type) {
         initLoader(threadCount, type);
     }
@@ -68,11 +73,12 @@ public class ImageLoader {
     public static ImageLoader getInstance(int threadCount, LoadType type) {
         if (mImageLoader == null) {
             // 使用同步对象锁，防止多线程同时访问
-            synchronized (mImageLoader) {
+            synchronized (ImageLoader.class) {
                 if (mImageLoader == null) {
                     mImageLoader = new ImageLoader(threadCount, type);
                 }
             }
+            mImageLoader = new ImageLoader(threadCount, type);
         }
         return mImageLoader;
     }
@@ -88,6 +94,12 @@ public class ImageLoader {
                 mPoolThreadHandler = new Handler() {
                     @Override
                     public void handleMessage(Message msg) {
+                        try {
+                            // 在mThreadPool取任务时设置信号量，只有当上一个任务执行完，才可以获取许可取任务，否则等待。
+                            mSemaphorePoolThread.acquire();
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
                         // 从线程池中取出一个任务执行
                         mThreadPool.execute(getTask());
                     }
@@ -119,6 +131,8 @@ public class ImageLoader {
         mTaskQueue = new LinkedList<>();
         mType = type;
 
+        // 设置信号量的数量与线程池中的线程数一致
+        mSemaphorePoolThread = new Semaphore(mThreadCount);
     }
 
     /**
@@ -128,11 +142,10 @@ public class ImageLoader {
      */
     private Runnable getTask() {
         if (mType == LoadType.LIFO) {
-            mTaskQueue.removeLast();
+            return mTaskQueue.removeLast();
         } else {
-            mTaskQueue.removeLast();
+            return mTaskQueue.removeLast();
         }
-        return null;
     }
 
     /**
@@ -150,8 +163,11 @@ public class ImageLoader {
             public void handleMessage(Message msg) {
                 // 更新ImageView
                 ImageHolder holder = (ImageHolder) msg.obj;
-                if (holder.getPath().equals(holder.getImageView().getTag().toString())) {
-                    imageView.setImageBitmap(holder.getBitmap());
+                ImageView iv = holder.getImageView();
+                Bitmap bitmap = holder.getBitmap();
+                String imagePath = holder.getPath();
+                if (iv.getTag().toString().equals(imagePath)) {
+                    iv.setImageBitmap(bitmap);
                 }
             }
         };
@@ -174,9 +190,13 @@ public class ImageLoader {
                     addBitmapToLruCache(path, bm);
                     // 4、将图片显示到imageView中
                     refreshImageView(imageView, path, bm);
+
+                    // 执行完一个任务后，释放信号量
+                    mSemaphorePoolThread.release();
                 }
             });
         }
+
     }
 
     /**
@@ -256,18 +276,20 @@ public class ImageLoader {
     /**
      * 添加异步任务
      * synchronized 防止多线程同时访问时，一直设置信号量，导致卡死
+     *
      * @param runnable
      */
     private synchronized void addTask(Runnable runnable) {
         // 将任务添加到任务队列中
         mTaskQueue.add(runnable);
-        // 当mPoolThreadHandler为空时，设置一个信号量，阻塞线程，直到实例化mPoolThreadHandler后，执行下一步
-        if (mPoolThreadHandler == null)
-            try {
+        try {
+            // 当mPoolThreadHandler为空时，设置一个信号量，阻塞线程，直到实例化mPoolThreadHandler后，执行下一步
+            if (mPoolThreadHandler == null)
                 mSemaphorePoolThreadHandler.acquire();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         // 通知后台线程
         mPoolThreadHandler.sendEmptyMessage(0X111);
     }
@@ -278,7 +300,6 @@ public class ImageLoader {
      * @param imageView
      * @return
      */
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
     private ImageSize getImageSize(ImageView imageView) {
         ImageSize imageSize = new ImageSize();
         DisplayMetrics dm = null;
@@ -291,7 +312,7 @@ public class ImageLoader {
         }
         // 如果小于等于0，则看ImageView中是否定义了最大宽度
         if (width <= 0) {
-            width = imageView.getMaxWidth();
+            width = getImageViewValueFromField(imageView, "mMaxWidth");
         }
         // 如果小于等于0，则将width设置为屏幕宽度
         if (width <= 0) {
@@ -309,7 +330,7 @@ public class ImageLoader {
         }
         // 如果小于等于0，则看ImageView中是否定义了最大高度
         if (height <= 0) {
-            height = imageView.getMaxHeight();
+            height = getImageViewValueFromField(imageView, "mMaxHeight");
         }
         // 如果小于等于0，则将width设置为屏幕高度
         if (height <= 0) {
@@ -321,6 +342,26 @@ public class ImageLoader {
         imageSize.setHeight(height);
         imageSize.setWidth(width);
         return imageSize;
+    }
+
+    /**
+     * 通过反射获取到ImageView的某个属性值
+     */
+    private int getImageViewValueFromField(Object obj, String fieldName) {
+        int value = 0;
+        try {
+            Field field = ImageView.class.getDeclaredField(fieldName);
+            field.setAccessible(true);
+            int fieldValue = field.getInt(obj);
+            if (fieldValue > 0 && fieldValue < Integer.MAX_VALUE) {
+                value = fieldValue;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+
+        return value;
     }
 
     /**

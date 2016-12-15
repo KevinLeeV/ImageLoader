@@ -13,9 +13,9 @@ import android.widget.ImageView;
  */
 public class ImageHolder {
 
-    private ImageView imageView;
-    private String path;
-    private Bitmap bitmap;
+    public ImageView imageView;
+    public String path;
+    public Bitmap bitmap;
 
     public ImageView getImageView() {
         return imageView;
