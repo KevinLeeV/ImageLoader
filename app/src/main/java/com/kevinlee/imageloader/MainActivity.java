@@ -13,6 +13,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.StaggeredGridLayoutManager;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
@@ -20,8 +21,10 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.kevinlee.imageloader.imageloader.ImageLoader;
-import com.kevinlee.imageloader.imageloader.LoadType;
+import com.kevinlee.imageloader.imageloader.bean.LoadType;
 import com.kevinlee.imageloader.imageloader.bean.Folder;
+import com.kevinlee.imageloader.imageloader.listener.OnGetCurrentFolderListener;
+import com.kevinlee.imageloader.imageloader.popupwindow.ChooseFolderWindow;
 import com.kevinlee.imageloader.recycleradapter.CommonRecyclerAdapter;
 import com.kevinlee.imageloader.recycleradapter.CommonViewHolder;
 
@@ -33,7 +36,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
     private static final int DATA_LOADED = 0X111;
 
@@ -53,6 +56,8 @@ public class MainActivity extends AppCompatActivity {
 
     private Set<String> seletedData = new HashSet<>();
 
+    private ChooseFolderWindow chooseFolderWindow;
+
     private Handler handler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
@@ -64,7 +69,6 @@ public class MainActivity extends AppCompatActivity {
 
         }
     };
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -154,6 +158,7 @@ public class MainActivity extends AppCompatActivity {
      * 初始化事件
      */
     private void initEvent() {
+        rlBottom.setOnClickListener(this);
     }
 
     /**
@@ -165,14 +170,22 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "未扫描到图片！", Toast.LENGTH_SHORT).show();
             return;
         }
-        imageList = Arrays.asList(mCurrentFolder.list());
+        imageList = Arrays.asList(mCurrentFolder.list(new FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String filename) {
+                if (filename.endsWith(".jpg") || filename.endsWith(".jpeg") || filename.endsWith(".png"))
+                    return true;
+                return false;
+            }
+        }));
+        mMaxCount = imageList.size();
         tvFolder.setText(mCurrentFolder.getName());
         tvImgCount.setText(mMaxCount + "张");
 
         final ImageLoader loader = ImageLoader.getInstance(3, LoadType.LIFO);
         adapter = new CommonRecyclerAdapter<String>(this, R.layout.recyclerview_item_layout, imageList) {
             @Override
-            public void convert(CommonViewHolder holder, String data) {
+            public void convert(CommonViewHolder holder, String data, int position) {
                 final String filePath = mCurrentFolder.getAbsolutePath() + File.separator + data;
                 final ImageView iv = holder.getView(R.id.iv);
                 final ImageView ivSelect = holder.getView(R.id.iv_select);
@@ -201,7 +214,6 @@ public class MainActivity extends AppCompatActivity {
                     iv.setColorFilter(Color.parseColor("#77000000"));
                     ivSelect.setImageResource(R.drawable.selected);
                 }
-
             }
         };
         recyclerView.setAdapter(adapter);
@@ -209,4 +221,26 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(staggeredGridLayoutManager);
     }
 
+    @Override
+    public void onClick(View v) {
+        switch (v.getId()) {
+            case R.id.rl_bottom:
+                if (chooseFolderWindow == null)
+                    chooseFolderWindow = new ChooseFolderWindow(this, folderList, mCurrentFolder, getCurrentFolderListener);
+                if (chooseFolderWindow != null)
+                    chooseFolderWindow.showAtLocation(rlBottom, Gravity.CENTER, 0, 0);
+                break;
+        }
+    }
+
+    /**
+     * 获取当前的文件夹
+     */
+    private OnGetCurrentFolderListener getCurrentFolderListener = new OnGetCurrentFolderListener() {
+        @Override
+        public void getFolder(File folder) {
+            mCurrentFolder = folder;
+            data2View();
+        }
+    };
 }

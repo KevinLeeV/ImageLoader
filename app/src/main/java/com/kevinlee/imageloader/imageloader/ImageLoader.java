@@ -2,19 +2,17 @@ package com.kevinlee.imageloader.imageloader;
 
 import android.annotation.TargetApi;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.text.TextUtils;
-import android.util.DisplayMetrics;
-import android.util.Log;
 import android.util.LruCache;
-import android.view.ViewGroup;
 import android.widget.ImageView;
 
-import java.lang.reflect.Field;
+import com.kevinlee.imageloader.imageloader.bean.LoadType;
+import com.kevinlee.imageloader.imageloader.utils.CompressBitmapFromPath;
+
 import java.util.LinkedList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -182,13 +180,11 @@ public class ImageLoader {
                 @Override
                 public void run() {
                     // 加载图片
-                    // 1、得获取到图片需要显示的尺寸
-                    ImageSize imageSize = getImageSize(imageView);
-                    // 2、压缩图片
-                    Bitmap bm = decodeSampledBitmapFromPath(path, imageSize.getWidth(), imageSize.getHeight());
-                    // 3、将图片加载到缓存中
+                    // 1、获取到图片需要显示的尺寸,并压缩图片
+                    Bitmap bm = CompressBitmapFromPath.getInstance().decodeSampledBitmapFromPath(path, imageView);
+                    // 2、将图片加载到缓存中
                     addBitmapToLruCache(path, bm);
-                    // 4、将图片显示到imageView中
+                    // 3、将图片显示到imageView中
                     refreshImageView(imageView, path, bm);
 
                     // 执行完一个任务后，释放信号量
@@ -231,49 +227,6 @@ public class ImageLoader {
     }
 
     /**
-     * 根据图片的需求宽高压缩图片
-     *
-     * @param path
-     * @param width
-     * @param height
-     * @return
-     */
-    private Bitmap decodeSampledBitmapFromPath(String path, int width, int height) {
-        // 获取到图片的实际宽高
-        BitmapFactory.Options options = new BitmapFactory.Options();
-        // 不加载到内存中
-        options.inJustDecodeBounds = true;
-        // options获得图片的实际宽高
-        BitmapFactory.decodeFile(path, options);
-        // 获取图片压缩比例
-        options.inSampleSize = getSampleSize(options, width, height);
-        // 将图片加载到内存,并通过inSampleSize再次解析图片
-        options.inJustDecodeBounds = false;
-        Bitmap bitmap = BitmapFactory.decodeFile(path, options);
-        return bitmap;
-    }
-
-    /**
-     * 根据图片的实际宽高与需求宽高获取到压缩比例
-     *
-     * @param options
-     * @param reqWidth
-     * @param reqHeight
-     * @return
-     */
-    private int getSampleSize(BitmapFactory.Options options, int reqWidth, int reqHeight) {
-        int width = options.outWidth;// 图片实际宽度
-        int height = options.outHeight;// 图片实际高度
-        int sampleSize = 1;
-        if (width > reqWidth || height > reqHeight) {
-            int widthRadio = Math.round(width * 1.0f / reqWidth);// 获取到宽度比例
-            int heightRadio = Math.round(height * 1.0f / reqHeight);// 获取到高度比例
-            sampleSize = Math.max(widthRadio, heightRadio);
-        }
-        return sampleSize;
-    }
-
-    /**
      * 添加异步任务
      * synchronized 防止多线程同时访问时，一直设置信号量，导致卡死
      *
@@ -292,76 +245,6 @@ public class ImageLoader {
         }
         // 通知后台线程
         mPoolThreadHandler.sendEmptyMessage(0X111);
-    }
-
-    /**
-     * 获取到Image的宽高
-     *
-     * @param imageView
-     * @return
-     */
-    private ImageSize getImageSize(ImageView imageView) {
-        ImageSize imageSize = new ImageSize();
-        DisplayMetrics dm = null;
-        // 获取imageView 的实际宽度
-        int width = imageView.getWidth();
-        // 如果小于等于0，则看LayoutParams中是否定义了width
-        if (width <= 0) {
-            ViewGroup.LayoutParams lp = imageView.getLayoutParams();
-            width = lp.width;
-        }
-        // 如果小于等于0，则看ImageView中是否定义了最大宽度
-        if (width <= 0) {
-            width = getImageViewValueFromField(imageView, "mMaxWidth");
-        }
-        // 如果小于等于0，则将width设置为屏幕宽度
-        if (width <= 0) {
-            if (dm == null)
-                dm = imageView.getContext().getResources().getDisplayMetrics();
-            width = dm.widthPixels;
-        }
-
-        // 获取imageView 的实际高度
-        int height = imageView.getHeight();
-        // 如果小于等于0，则看LayoutParams中是否定义了height
-        if (height <= 0) {
-            ViewGroup.LayoutParams lp = imageView.getLayoutParams();
-            height = lp.height;
-        }
-        // 如果小于等于0，则看ImageView中是否定义了最大高度
-        if (height <= 0) {
-            height = getImageViewValueFromField(imageView, "mMaxHeight");
-        }
-        // 如果小于等于0，则将width设置为屏幕高度
-        if (height <= 0) {
-            if (dm == null)
-                dm = imageView.getContext().getResources().getDisplayMetrics();
-            height = dm.heightPixels;
-        }
-
-        imageSize.setHeight(height);
-        imageSize.setWidth(width);
-        return imageSize;
-    }
-
-    /**
-     * 通过反射获取到ImageView的某个属性值
-     */
-    private int getImageViewValueFromField(Object obj, String fieldName) {
-        int value = 0;
-        try {
-            Field field = ImageView.class.getDeclaredField(fieldName);
-            field.setAccessible(true);
-            int fieldValue = field.getInt(obj);
-            if (fieldValue > 0 && fieldValue < Integer.MAX_VALUE) {
-                value = fieldValue;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-
-        return value;
     }
 
     /**

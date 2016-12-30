@@ -11,6 +11,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
+import com.kevinlee.imageloader.imageloader.utils.CompressBitmapFromPath;
 
 /**
  * ClassName: CommonViewHolder
@@ -24,7 +25,7 @@ public class CommonViewHolder extends RecyclerView.ViewHolder {
 
     // Item中各种View的集合，SparseArray类似于Map，key是Integer类型，但是效率比Map要高
     private SparseArray<View> mViews;
-    private View itemView;
+    public View itemView;
     private Context mContext;
 
     private CommonViewHolder(Context context, View itemView) {
@@ -130,6 +131,20 @@ public class CommonViewHolder extends RecyclerView.ViewHolder {
      */
     public CommonViewHolder setImageBitmap(int viewId, Bitmap bitmap) {
         ImageView view = getView(viewId);
+        view.setImageBitmap(bitmap);
+        return this;
+    }
+
+    /**
+     * 为ImageView设置图片
+     *
+     * @param viewId   view的id
+     * @param filePath 图片路径
+     * @return ViewHolder是为了实现链式代码
+     */
+    public CommonViewHolder setImageBitmap(int viewId, String filePath) {
+        ImageView view = getView(viewId);
+        Bitmap bitmap = CompressBitmapFromPath.getInstance().decodeSampledBitmapFromPath(filePath, view);
         view.setImageBitmap(bitmap);
         return this;
     }

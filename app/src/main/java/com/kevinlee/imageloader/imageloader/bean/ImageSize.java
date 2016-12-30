@@ -1,4 +1,4 @@
-package com.kevinlee.imageloader.imageloader;
+package com.kevinlee.imageloader.imageloader.bean;
 
 /**
  * ClassName:ImageSize

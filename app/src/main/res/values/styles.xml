@@ -8,4 +8,9 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
+    <style name="ChooseFolderWindowAnim">
+        <item name="android:windowEnterAnimation">@anim/choose_folder_window_in</item>
+        <item name="android:windowExitAnimation">@anim/choose_folder_window_out</item>
+    </style>
+
 </resources>
